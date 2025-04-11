@@ -1,0 +1,13 @@
+*.pyc
+.env*
+*.png
+*.mmd
+*.csv
+*.json
+*.iml
+*.xml
+.venv/
+raw_data/
+data_backup/
+nodes_edges_csv/
+neo4j/data/

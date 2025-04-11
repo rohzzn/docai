@@ -1,0 +1,5 @@
+POSTGRES_DB = "db"
+POSTGRES_HOST = "postgres"
+POSTGRES_PASSWORD = "db_user_password"
+POSTGRES_PORT = "5432"
+POSTGRES_USER = "db_user"

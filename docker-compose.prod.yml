@@ -1,0 +1,51 @@
+services:
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    networks:
+      - local
+    volumes:
+      - ./webapp:/webapp
+    ports:
+      - "8000:8000"
+      - "11434:11434"
+    env_file:
+      - ./.env
+    depends_on:
+      - neo4j
+
+  neo4j:
+    networks:
+      - local
+    image: neo4j:5.23.0
+    ports:
+      - "7474:7474" # HTTP
+      - "7687:7687" # Bolt
+    volumes:
+      - ./neo4j/data:/data
+#      - neo4j_data:/data
+      - neo4j_logs:/logs
+    env_file:
+      - ./.env
+
+  nginx:
+    image: nginx:latest
+    networks:
+      - local
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf
+      - ./frontend/build:/usr/share/nginx/html
+    ports:
+      - "80:80"
+    depends_on:
+      - django
+      - neo4j
+
+networks:
+  local:
+
+volumes:
+  neo4j_data:
+  neo4j_import:
+  neo4j_logs:
