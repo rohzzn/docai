@@ -20,8 +20,8 @@ services:
       - local
     image: neo4j:5.23.0
     ports:
-      - "7474:7474" # HTTP
-      - "7687:7687" # Bolt
+      - "7475:7474" # HTTP
+      - "7688:7687" # Bolt
     volumes:
       - ./neo4j/data:/data
 #      - neo4j_data:/data
@@ -37,7 +37,7 @@ services:
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf
       - ./frontend/build:/usr/share/nginx/html
     ports:
-      - "80:80"
+      - "8081:80"
     depends_on:
       - django
       - neo4j
