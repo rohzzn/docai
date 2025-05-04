@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 
 from langchain_community.document_loaders import ConfluenceLoader
 from langchain_community.graphs import Neo4jGraph
@@ -23,6 +24,10 @@ nest_asyncio.apply()
 
 RDCRN_CONFLUENCE_SPACE = os.environ.get("RDCRN_CONFLUENCE_SPACE")
 RDCRN_CONFLUENCE_URL = os.environ.get("RDCRN_CONFLUENCE_URL")
+
+# Log environment variables for debugging
+logging.info(f"RDCRN_CONFLUENCE_SPACE: {RDCRN_CONFLUENCE_SPACE}")
+logging.info(f"RDCRN_CONFLUENCE_URL: {RDCRN_CONFLUENCE_URL}")
 
 def main():
     url = RDCRN_CONFLUENCE_URL

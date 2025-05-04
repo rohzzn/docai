@@ -37,12 +37,40 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await axios.get(
-        `${API_BASE_URL}/api/search/?q=${query}`
-      );
+      const apiUrl = `${API_BASE_URL}/api/search/?q=${encodeURIComponent(query)}`;
+      console.log(`Calling API: ${apiUrl}`);
+      
+      const response = await axios.get(apiUrl, {
+        withCredentials: false,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log("API response:", response.data);
       setResults(response.data);
     } catch (error) {
-      message.error("An error occurred while fetching results.");
+      console.error("API error:", error);
+      
+      let errorMessage = "An error occurred while fetching results.";
+      if (error.response) {
+        console.error("Response data:", error.response.data);
+        console.error("Response status:", error.response.status);
+        errorMessage += ` Status: ${error.response.status}`;
+        
+        if (error.response.data && error.response.data.error) {
+          errorMessage += ` Message: ${error.response.data.error}`;
+        }
+      } else if (error.request) {
+        console.error("Request made but no response:", error.request);
+        errorMessage += " No response received from server. Backend might not be running.";
+      } else {
+        console.error("Error setting up request:", error.message);
+        errorMessage += ` ${error.message}`;
+      }
+      
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }

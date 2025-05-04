@@ -66,44 +66,47 @@ def generate_answer(state):
         state (dict): New key added to state, generation, that contains LLM generation
     """
 
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                "You are an intelligent assistant that provides answers based on the given contextual data.",
-            ),
-            (
-                "human",
-                """
-                Given the following input:
-                - Query: {query}
-                - Neo4j Documents: {neo4j_documents}
+    prompt_template = """
+    You are an intelligent assistant that provides answers based on the given contextual data.
+    
+    Given the following input:
+    - Query: {query}
+    - Neo4j Documents: {neo4j_documents}
+    
+    Please provide a complete and direct answer to the query using only the information from the context provided.
+    
+    **Important**:
+    - Only use information from the context.
+    - Do not include any reasoning, explanations, or document names unless specifically required for the answer.
+    """
 
-                Please provide a complete and direct answer to the query using only the information from the context provided.
-
-                **Important**:
-                - Only use information from the context.
-                - Do not include any reasoning, explanations, or document names unless specifically required for the answer.
-                """,
-            ),
-        ]
-    )
-
-    llm = ChatOpenAI(temperature=0, model_name=DEFAULT_MODEL_NAME)
-    # llm = ChatOllama(model="llama3.1")
-
-    rag_chain = prompt | llm | StrOutputParser()
-
+    # Fix the initialization of ChatOpenAI
+    import os
+    # Ensure OPENAI_API_KEY is set
+    os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY", "sk-your-openai-api-key")
+    
+    # Import OpenAI directly to avoid class definition issues
+    from openai import OpenAI
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    
+    # Create a direct implementation to generate answer
+    def generate_response(query, neo4j_documents):
+        prompt_text = prompt_template.format(query=query, neo4j_documents=neo4j_documents)
+        response = client.chat.completions.create(
+            model=DEFAULT_MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "You are an intelligent assistant that provides answers based on the given contextual data."},
+                {"role": "user", "content": prompt_text}
+            ],
+            temperature=0
+        )
+        return response.choices[0].message.content
+    
     print("---GENERATE---")
     neo4j_documents = state.get("relevant_documents")
     user_query = state.get("user_query")
-
-    generated_response = rag_chain.invoke(
-        {
-            "neo4j_documents": neo4j_documents,
-            "query": user_query,
-        }
-    )
+    
+    generated_response = generate_response(user_query, neo4j_documents)
     return {"final_response": generated_response}
 
 def permission_check(state):
@@ -158,17 +161,50 @@ def relevancy_check(state):
         input_variables=["query", "context"],
     )
 
-    llm = ChatOpenAI(temperature=0, model_name=DEFAULT_MODEL_NAME)
-    # llm = ChatOllama(model="llama3.1")
-
-    chain = prompt | llm | JsonOutputParser()
+    # Fix the initialization of ChatOpenAI
+    import os
+    # Ensure OPENAI_API_KEY is set
+    os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY", "sk-your-openai-api-key")
+    
+    # Import OpenAI directly to avoid class definition issues
+    from openai import OpenAI
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    
+    # Create a simple function to mimic ChatOpenAI
+    def ask_openai(prompt_text):
+        response = client.chat.completions.create(
+            model=DEFAULT_MODEL_NAME,
+            messages=[{"role": "user", "content": prompt_text}],
+            temperature=0
+        )
+        return response.choices[0].message.content
+    
+    # Use a simple chain with the custom OpenAI function
+    def chain_invoke(inputs):
+        context = inputs.get("context", "")
+        query = inputs.get("query", "")
+        prompt_text = prompt.template.format(context=context, query=query)
+        response = ask_openai(prompt_text)
+        # Parse the JSON response
+        import json
+        try:
+            return json.loads(response)
+        except:
+            # Fallback if JSON parsing fails
+            if "yes" in response.lower():
+                return {"score": "yes"}
+            else:
+                return {"score": "no"}
+    
+    # Use our custom chain instead of the LangChain one
+    chain = chain_invoke
 
     accessible_documents = state.get("accessible_documents")
     query = state.get("user_query")
 
     relevant_documents = []
     for document in accessible_documents:
-        score = chain.invoke({
+        score = chain({
             "context": f'{document.page_content} \n\n{str(document.metadata)}',
             "query": query,
         })
