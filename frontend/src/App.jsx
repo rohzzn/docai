@@ -10,10 +10,12 @@ import {
   Typography,
   message,
   Card,
+  Collapse,
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 
-const { Paragraph, Title } = Typography;
+const { Paragraph, Title, Text } = Typography;
+const { Panel } = Collapse;
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:8000";
@@ -22,6 +24,7 @@ function App() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState({});
   const [loading, setLoading] = useState(false);
+  const [showSources, setShowSources] = useState(false);
 
   const handleInputChange = (e) => {
     setQuery(e.target.value);
@@ -75,6 +78,18 @@ function App() {
       setLoading(false);
     }
   };
+  
+  // Helper function to clean document text from field labels
+  const cleanDocumentText = (text) => {
+    if (!text) return "";
+    
+    // Remove field labels like id:, title:, data_source:, text:
+    return text
+      .replace(/id:"[^"]*"\s*/g, '')
+      .replace(/title:"[^"]*"\s*/g, '')
+      .replace(/data_source:"[^"]*"\s*/g, '')
+      .replace(/text:"[^"]*"\s*/g, '');
+  };
 
   return (
     <div style={styles.container}>
@@ -86,6 +101,7 @@ function App() {
           onChange={handleInputChange}
           style={styles.input}
           size="large"
+          onPressEnter={handleSearch}
         />
         <Button
           type="primary"
@@ -109,58 +125,76 @@ function App() {
             <Card style={styles.answerCard}>
               <Title level={4}>Answer</Title>
               <p>{results["answer"]}</p>
+              
+              {(results["relevant_documents"] || []).length > 0 && (
+                <Button 
+                  type="link" 
+                  onClick={() => setShowSources(!showSources)}
+                  style={styles.sourcesButton}
+                >
+                  {showSources ? "Hide Sources" : "Show Sources"}
+                </Button>
+              )}
             </Card>
           )}
-          <List
-            itemLayout="vertical"
-            size="large"
-            dataSource={results["relevant_documents"] || []}
-            renderItem={(item) => (
-              <Card
-                style={styles.resultCard}
-                key={item.title || item.name || item.disease_name}
-              >
-                <List.Item>
-                  <List.Item.Meta
-                    title={
-                      <a
-                        href={
-                          item.source || item.rfa_url || item.website_url || "#"
-                        }
-                        rel="noopener noreferrer"
-                        style={styles.resultTitle}
-                        target="_blank"
-                      >
-                        {item.title ||
-                          item.name ||
-                          item.disease_name ||
-                          item.id}
-                        &nbsp;
-                        {item.data_source && (
-                          <Tag color="#108ee9">{item.data_source}</Tag>
-                        )}
-                      </a>
-                    }
-                    description={
-                      <Paragraph
-                        ellipsis={
-                          item.text || item.description ? { rows: 5 } : false
-                        }
-                        style={styles.resultDescription}
-                      >
-                        {item.text || item.description || (
-                          <JSONTree
-                            data={item}
-                            theme={"summerfruit:inverted"}
-                          />
-                        )}
-                      </Paragraph>
-                    }
-                  />
-                </List.Item>
-              </Card>
-            )}
-          />
+          
+          {showSources && (results["relevant_documents"] || []).length > 0 && (
+            <div style={styles.sourcesSection}>
+              <Title level={5}>Sources</Title>
+              <List
+                itemLayout="vertical"
+                size="large"
+                dataSource={results["relevant_documents"] || []}
+                renderItem={(item) => {
+                  // For display in the UI, prioritize regular text content
+                  const displayText = item.text || item.description || '';
+                  
+                  return (
+                    <Card
+                      style={styles.resultCard}
+                      key={item.title || item.name || item.disease_name || item.id}
+                    >
+                      <List.Item>
+                        <List.Item.Meta
+                          title={
+                            <div>
+                              <a
+                                href={
+                                  item.source || item.rfa_url || item.website_url || "#"
+                                }
+                                rel="noopener noreferrer"
+                                style={styles.resultTitle}
+                                target="_blank"
+                              >
+                                {item.title ||
+                                  item.name ||
+                                  item.disease_name ||
+                                  item.id}
+                              </a>
+                              &nbsp;
+                              {item.data_source && (
+                                <Tag color="#108ee9">{item.data_source}</Tag>
+                              )}
+                            </div>
+                          }
+                          description={
+                            <Paragraph
+                              ellipsis={displayText ? { rows: 5 } : false}
+                              style={styles.resultDescription}
+                            >
+                              {displayText ? cleanDocumentText(displayText) : 
+                                <JSONTree data={item} theme={"summerfruit:inverted"} />
+                              }
+                            </Paragraph>
+                          }
+                        />
+                      </List.Item>
+                    </Card>
+                  );
+                }}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -220,6 +254,13 @@ const styles = {
   resultDescription: {
     color: "#555",
     fontSize: "16px",
+  },
+  sourcesButton: {
+    marginTop: "10px",
+    padding: "0",
+  },
+  sourcesSection: {
+    marginTop: "20px",
   },
 };
 

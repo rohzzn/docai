@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import html
 
 from typing_extensions import TypedDict
 from typing import List
@@ -248,10 +249,12 @@ def retrieve_documents(state):
     results = parallel_retriever.invoke(query)
 
     for doc in results['postgres']:
-        doc.page_content += '\ndata_source: postgres'
+        # Add data_source to metadata instead of page_content
+        doc.metadata['data_source'] = 'postgres'
 
     for doc in results['confluence']:
-        doc.page_content += '\ndata_source: confluence'
+        # Add data_source to metadata instead of page_content
+        doc.metadata['data_source'] = 'confluence'
 
     retrieved_documents = results['postgres'] + results['confluence']
 
@@ -305,13 +308,25 @@ class DocuQuery:
     @staticmethod
     def parse_document_content(page_content):
         properties = {}
+        
+        # Remove any trailing data_source field if it exists
+        content_lines = []
+        data_source = None
+        
         for line in page_content.strip().split('\n'):
+            if line.strip().startswith('data_source:'):
+                continue
+            content_lines.append(line)
+                
+        # Parse the content    
+        for line in content_lines:
             key_value = line.split(':', 1)
             if len(key_value) == 2:
                 key = key_value[0].strip()
                 value = key_value[1].strip()
-                if value:
-                    properties[key] = value
+                if value and key not in ['data_source']:
+                    # Decode HTML entities like &rsquo; and &nbsp;
+                    properties[key] = html.unescape(value)
 
         return properties
 
