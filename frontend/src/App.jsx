@@ -141,60 +141,60 @@ function App() {
           {showSources && (results["relevant_documents"] || []).length > 0 && (
             <div style={styles.sourcesSection}>
               <Title level={5}>Sources</Title>
-              <List
-                itemLayout="vertical"
-                size="large"
-                dataSource={results["relevant_documents"] || []}
+          <List
+            itemLayout="vertical"
+            size="large"
+            dataSource={results["relevant_documents"] || []}
                 renderItem={(item) => {
                   // For display in the UI, prioritize regular text content
                   const displayText = item.text || item.description || '';
                   
                   return (
-                    <Card
-                      style={styles.resultCard}
+              <Card
+                style={styles.resultCard}
                       key={item.title || item.name || item.disease_name || item.id}
-                    >
-                      <List.Item>
-                        <List.Item.Meta
-                          title={
+              >
+                <List.Item>
+                  <List.Item.Meta
+                    title={
                             <div>
-                              <a
-                                href={
-                                  item.source || item.rfa_url || item.website_url || "#"
-                                }
-                                rel="noopener noreferrer"
-                                style={styles.resultTitle}
-                                target="_blank"
-                              >
-                                {item.title ||
-                                  item.name ||
-                                  item.disease_name ||
-                                  item.id}
+                      <a
+                        href={
+                          item.source || item.rfa_url || item.website_url || "#"
+                        }
+                        rel="noopener noreferrer"
+                        style={styles.resultTitle}
+                        target="_blank"
+                      >
+                        {item.title ||
+                          item.name ||
+                          item.disease_name ||
+                          item.id}
                               </a>
-                              &nbsp;
-                              {item.data_source && (
-                                <Tag color="#108ee9">{item.data_source}</Tag>
-                              )}
+                        &nbsp;
+                        {item.data_source && (
+                          <Tag color="#108ee9">{item.data_source}</Tag>
+                        )}
                             </div>
-                          }
-                          description={
-                            <Paragraph
+                    }
+                    description={
+                      <Paragraph
                               ellipsis={displayText ? { rows: 5 } : false}
-                              style={styles.resultDescription}
-                            >
+                        style={styles.resultDescription}
+                      >
                               {displayText ? cleanDocumentText(displayText) : 
                                 <JSONTree data={item} theme={"summerfruit:inverted"} />
                               }
-                            </Paragraph>
-                          }
-                        />
-                      </List.Item>
-                    </Card>
+                      </Paragraph>
+                    }
+                  />
+                </List.Item>
+              </Card>
                   );
                 }}
               />
             </div>
-          )}
+            )}
         </div>
       )}
     </div>

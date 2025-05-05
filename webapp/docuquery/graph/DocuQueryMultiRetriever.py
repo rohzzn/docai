@@ -68,21 +68,27 @@ def generate_answer(state):
     """
 
     prompt_template = """
-    You are an intelligent assistant that provides answers based on the given contextual data.
+    You are an intelligent assistant that provides answers based solely on the given contextual data.
     
     Given the following input:
-    - Query: {query}
-    - Neo4j Documents: {neo4j_documents}
+    - User Query: {query}
+    - Documents: {neo4j_documents}
     
-    Please provide a complete and direct answer to the query using only the information from the context provided.
+    Please provide a detailed and accurate answer to the query based only on the information from the provided documents.
     
-    **Important**:
-    - Only use information from the context.
-    - Do not include any reasoning, explanations, or document names unless specifically required for the answer.
+    **Important Guidelines**:
+    1. ONLY use information that is explicitly stated in the provided documents.
+    2. If the documents do not contain enough information to fully answer the query, state: "Based on the available information, I cannot provide a complete answer to this question."
+    3. Do not make assumptions or add information that is not in the documents.
+    4. Do not use any general knowledge that is not provided in the documents.
+    5. Cite specific information from the documents to support your answer.
+    6. Never provide a hardcoded or pre-written response.
     """
 
     # Fix the initialization of ChatOpenAI
     import os
+    import logging
+    
     # Ensure OPENAI_API_KEY is set
     os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY", "sk-your-openai-api-key")
     
@@ -92,21 +98,60 @@ def generate_answer(state):
     
     # Create a direct implementation to generate answer
     def generate_response(query, neo4j_documents):
-        prompt_text = prompt_template.format(query=query, neo4j_documents=neo4j_documents)
-        response = client.chat.completions.create(
-            model=DEFAULT_MODEL_NAME,
-            messages=[
-                {"role": "system", "content": "You are an intelligent assistant that provides answers based on the given contextual data."},
-                {"role": "user", "content": prompt_text}
-            ],
-            temperature=0
-        )
-        return response.choices[0].message.content
-    
+        # Debug logging
+        print(f"DEBUG: Got query: '{query}'")
+        print(f"DEBUG: Documents count: {len(neo4j_documents)}")
+        
+        # Check if documents have content
+        docs_with_content = []
+        for i, doc in enumerate(neo4j_documents):
+            content_length = len(str(doc.page_content)) if hasattr(doc, 'page_content') else 0
+            print(f"DEBUG: Document content length: {content_length}")
+            if content_length > 0:
+                docs_with_content.append(doc)
+                # Print a snippet of the document content for debugging
+                print(f"Doc {i+1}: Document Title: {doc.metadata.get('title', 'Unknown')}")
+                content_preview = doc.page_content[:20] + "..." if len(doc.page_content) > 20 else doc.page_content
+                print(f"Document Content: {content_preview}")
+        
+        if not docs_with_content:
+            print("DEBUG: No documents with valid content found")
+            return "Based on the available information, I cannot provide a complete answer to this question."
+        
+        print(f"DEBUG: In generate_response - Documents have content: {len(docs_with_content) > 0}")
+        print(f"---USING {len(docs_with_content)} DOCUMENTS FOR ANSWER GENERATION---")
+        
+        # Prepare document text for prompt
+        formatted_docs = []
+        for i, doc in enumerate(docs_with_content):
+            doc_text = f"Document {i+1}:\n"
+            if hasattr(doc, 'metadata') and doc.metadata:
+                doc_text += f"Title: {doc.metadata.get('title', 'Untitled')}\n"
+            doc_text += f"Content: {doc.page_content}\n"
+            formatted_docs.append(doc_text)
+        
+        documents_text = "\n".join(formatted_docs)
+        
+        # Generate response
+        prompt_text = prompt_template.format(query=query, neo4j_documents=documents_text)
+        try:
+            response = client.chat.completions.create(
+                model=DEFAULT_MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": "You are an intelligent assistant that provides answers based solely on the given contextual data."},
+                    {"role": "user", "content": prompt_text}
+                ],
+                temperature=0
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"ERROR generating response: {str(e)}")
+            return "Sorry, I encountered an error while generating a response. Please try again."
+
     print("---GENERATE---")
     neo4j_documents = state.get("relevant_documents")
     user_query = state.get("user_query")
-    
+
     generated_response = generate_response(user_query, neo4j_documents)
     return {"final_response": generated_response}
 
@@ -152,18 +197,26 @@ def relevancy_check(state):
         state (dict): Updates documents key with relevant accessible documents
     """
     prompt = PromptTemplate(
-        template="""You are a grader assessing relevance of a retrieved document to a user query. \n 
-            Here is the retrieved document: \n\n {context} \n\n
-            Here is the user query: {query} \n
-            If the document contains keywords related to the user query, grade it as relevant. \n
-            It does not need to be a stringent test. The goal is to filter out erroneous retrievals. \n
-            Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the query. \n
-            Provide the binary score as a JSON with a single key 'score' and no preamble or explanation.""",
+        template="""You are evaluating whether a document is relevant to a user query.
+
+Document content: 
+{context}
+
+User query: {query}
+
+Your task is to determine if this document contains any information that might help answer the query.
+Even if the document only partially addresses the query or contains related information, it should be considered relevant.
+Only mark documents as not relevant if they are completely unrelated to the query topic.
+
+Please respond with "yes" if the document is even slightly relevant, and "no" only if it is completely unrelated.
+Provide your answer as a JSON with a single key "score" and value "yes" or "no" with no additional explanation.""",
         input_variables=["query", "context"],
     )
 
     # Fix the initialization of ChatOpenAI
     import os
+    import logging
+    
     # Ensure OPENAI_API_KEY is set
     os.environ["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY", "sk-your-openai-api-key")
     
@@ -173,12 +226,17 @@ def relevancy_check(state):
     
     # Create a simple function to mimic ChatOpenAI
     def ask_openai(prompt_text):
-        response = client.chat.completions.create(
-            model=DEFAULT_MODEL_NAME,
-            messages=[{"role": "user", "content": prompt_text}],
-            temperature=0
-        )
-        return response.choices[0].message.content
+        try:
+            response = client.chat.completions.create(
+                model=DEFAULT_MODEL_NAME,
+                messages=[{"role": "user", "content": prompt_text}],
+                temperature=0
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logging.error(f"Error in ask_openai: {str(e)}")
+            # Default to yes if there's an error, to be more inclusive
+            return '{"score": "yes"}'
     
     # Use a simple chain with the custom OpenAI function
     def chain_invoke(inputs):
@@ -189,8 +247,11 @@ def relevancy_check(state):
         # Parse the JSON response
         import json
         try:
-            return json.loads(response)
-        except:
+            # Remove any Markdown formatting that might be present in the response
+            clean_response = response.replace("```json", "").replace("```", "").strip()
+            return json.loads(clean_response)
+        except Exception as e:
+            logging.error(f"Error parsing JSON: {str(e)}, response: {response}")
             # Fallback if JSON parsing fails
             if "yes" in response.lower():
                 return {"score": "yes"}
@@ -203,21 +264,53 @@ def relevancy_check(state):
     accessible_documents = state.get("accessible_documents")
     query = state.get("user_query")
 
-    relevant_documents = []
-    for document in accessible_documents:
-        score = chain({
-            "context": f'{document.page_content} \n\n{str(document.metadata)}',
-            "query": query,
-        })
-        if score["score"] == "yes":
-            print("---GRADE: DOCUMENT RELEVANT---")
-            relevant_documents.append(document)
-        else:
-            print("---GRADE: DOCUMENT NOT RELEVANT---")
+    # If no documents, return early
+    if not accessible_documents or len(accessible_documents) == 0:
+        print("---NO ACCESSIBLE DOCUMENTS FOUND---")
+        return {"relevant_documents": [], "final_response": "No relevant documents found."}
 
+    # Keep track of relevant documents
+    relevant_documents = []
+    
+    # Print query for debugging
+    print(f"---EVALUATING RELEVANCE FOR QUERY: {query}---")
+    
+    for i, document in enumerate(accessible_documents):
+        # Extract document info for logging
+        doc_id = document.metadata.get('id', f'doc_{i}')
+        doc_title = document.metadata.get('title', 'Untitled')
+        
+        # Get the first 200 characters for preview
+        content_preview = document.page_content[:200] + "..." if len(document.page_content) > 200 else document.page_content
+        print(f"---DOCUMENT {i+1}: {doc_title} ({doc_id})---")
+        print(f"---CONTENT PREVIEW: {content_preview}---")
+        
+        # Perform relevance check
+        try:
+            score = chain({
+                "context": f'{document.page_content} \n\n{str(document.metadata)}',
+                "query": query,
+            })
+            
+            if score.get("score") == "yes":
+                print(f"---GRADE: DOCUMENT RELEVANT---")
+                relevant_documents.append(document)
+            else:
+                print(f"---GRADE: DOCUMENT NOT RELEVANT---")
+        except Exception as e:
+            # If there's an error in relevancy check, include the document (be more permissive)
+            print(f"---ERROR IN RELEVANCY CHECK: {str(e)}, INCLUDING DOCUMENT---")
+            relevant_documents.append(document)
+
+    # Update state with relevant documents
     updated_state = {"relevant_documents": relevant_documents}
+    
+    # If no relevant documents were found, set a clear message
     if not relevant_documents:
-        updated_state["final_response"] = "No relevant document found."
+        print("---NO RELEVANT DOCUMENTS FOUND---")
+        updated_state["final_response"] = "No relevant document found for your query. Please try a different question."
+    else:
+        print(f"---FOUND {len(relevant_documents)} RELEVANT DOCUMENTS---")
 
     return updated_state
 
