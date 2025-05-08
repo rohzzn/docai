@@ -33,6 +33,9 @@ ALLOWED_HOSTS = [
     "localhost:3010",
     # Add prod origin
     "doc-ai.pcgcid.org",
+    "172.16.8.101",  # EC2 internal IP
+    "doc-ai.rarediseasesnetwork.org",  # Production domain
+    "*",  # Allow all hosts temporarily for troubleshooting
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -44,6 +47,10 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8010",
     "http://localhost",
     # Add prod origin
+    "http://172.16.8.101",
+    "https://172.16.8.101",
+    "http://doc-ai.rarediseasesnetwork.org",
+    "https://doc-ai.rarediseasesnetwork.org",
 ]
 
 # Make CORS more permissive for development

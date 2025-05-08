@@ -20,8 +20,22 @@ import { SearchOutlined } from "@ant-design/icons";
 const { Paragraph, Title, Text } = Typography;
 const { Panel } = Collapse;
 
-const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:8010";
+// Auto-detect API URL based on current hostname
+const getApiBaseUrl = () => {
+  const hostname = window.location.hostname;
+  const protocol = window.location.protocol;
+  
+  // For production environment
+  if (hostname === 'doc-ai.rarediseasesnetwork.org') {
+    // Use relative URL to avoid CORS issues
+    return '';
+  }
+  
+  // For development environment - use the standard local URL
+  return process.env.REACT_APP_API_BASE_URL || "http://localhost:8010";
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 function App() {
   const [query, setQuery] = useState("");

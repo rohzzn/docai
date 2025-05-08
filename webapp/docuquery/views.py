@@ -3,6 +3,8 @@ from django.views.decorators.http import require_http_methods
 import logging
 import traceback
 import re
+import json
+import socket
 
 # from docuquery.graph.DocuQuery import DocuQuery
 from docuquery.graph.DocuQueryMultiRetriever import DocuQuery
@@ -11,6 +13,32 @@ from docuquery.graph.DocuQueryMultiRetriever import DocuQuery
 @require_http_methods(["GET"])
 def index(request):
     return HttpResponse("Hello, world!")
+
+@require_http_methods(["GET"])
+def api_status(request):
+    """
+    Diagnostic endpoint to check API connectivity and server information
+    """
+    try:
+        hostname = socket.gethostname()
+        ip = socket.gethostbyname(hostname)
+        
+        status_data = {
+            "status": "ok",
+            "message": "API is working correctly",
+            "server_info": {
+                "hostname": hostname,
+                "ip": ip,
+                "headers": dict(request.headers),
+                "host": request.get_host(),
+                "method": request.method,
+                "path": request.path,
+            }
+        }
+        return JsonResponse(status_data)
+    except Exception as e:
+        logging.error(f"Status check error: {str(e)}")
+        return JsonResponse({"status": "error", "error": str(e)}, status=500)
 
 @require_http_methods(["GET"])
 def search(request):
