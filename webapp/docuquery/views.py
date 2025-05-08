@@ -45,6 +45,9 @@ def search(request):
                 "data_source": metadata.get("data_source", ""),
                 # Ensure 'text' field doesn't contain metadata fields
                 "text": data.get("text", ""),
+                # Add space information
+                "space_name": data.get("space_name", metadata.get("space_name", "")),
+                "space_key": data.get("space_key", metadata.get("space_key", "")),
             }
             
             parsed_document.append(clean_doc)

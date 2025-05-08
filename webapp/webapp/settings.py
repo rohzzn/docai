@@ -30,14 +30,18 @@ ALLOWED_HOSTS = [
     "0.0.0.0",
     "localhost",
     "localhost:3000",
+    "localhost:3010",
     # Add prod origin
     "doc-ai.pcgcid.org",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:3010",
     "http://0.0.0.0:8000",
     "http://localhost:8000",
+    "http://0.0.0.0:8010",
+    "http://localhost:8010",
     "http://localhost",
     # Add prod origin
 ]

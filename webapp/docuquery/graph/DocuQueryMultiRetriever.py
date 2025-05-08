@@ -68,21 +68,29 @@ def generate_answer(state):
     """
 
     prompt_template = """
-    You are an intelligent assistant that provides answers based solely on the given contextual data.
+    You are an intelligent assistant that provides direct, concise answers.
     
     Given the following input:
     - User Query: {query}
     - Documents: {neo4j_documents}
     
-    Please provide a detailed and accurate answer to the query based only on the information from the provided documents.
+    Please provide an accurate answer to the query based on the information from the provided documents.
     
     **Important Guidelines**:
-    1. ONLY use information that is explicitly stated in the provided documents.
-    2. If the documents do not contain enough information to fully answer the query, state: "Based on the available information, I cannot provide a complete answer to this question."
-    3. Do not make assumptions or add information that is not in the documents.
-    4. Do not use any general knowledge that is not provided in the documents.
-    5. Cite specific information from the documents to support your answer.
-    6. Never provide a hardcoded or pre-written response.
+    1. Provide direct answers without repeating the question.
+    2. Don't use phrases like "Based on the provided documents" or "According to the information".
+    3. For common acronyms, organizations, or terms (like NIH, RDCRN, etc.) that appear in the documents but aren't fully defined, you may provide standard definitions or expansions.
+    4. Make reasonable inferences from the information in the documents when appropriate.
+    5. If the documents mention a concept but don't fully explain it, you may provide basic clarification using widely known information.
+    6. If the documents contain only partial information about the query, provide what you can without acknowledging limitations.
+    7. If no information is available, simply say "No information available about this topic."
+    8. Structure your answer using proper markdown formatting:
+       - Use ## for section headings
+       - Use **bold** for emphasis
+       - Use - or * for bullet points
+       - Use 1., 2., etc. for numbered lists
+       - Use [text](url) format for links
+       - Use proper paragraph breaks with empty lines
     """
 
     # Fix the initialization of ChatOpenAI
@@ -138,7 +146,7 @@ def generate_answer(state):
             response = client.chat.completions.create(
                 model=DEFAULT_MODEL_NAME,
                 messages=[
-                    {"role": "system", "content": "You are an intelligent assistant that provides answers based solely on the given contextual data."},
+                    {"role": "system", "content": "You are an intelligent assistant that provides direct, concise answers without preamble."},
                     {"role": "user", "content": prompt_text}
                 ],
                 temperature=0
@@ -308,7 +316,7 @@ Provide your answer as a JSON with a single key "score" and value "yes" or "no" 
     # If no relevant documents were found, set a clear message
     if not relevant_documents:
         print("---NO RELEVANT DOCUMENTS FOUND---")
-        updated_state["final_response"] = "No relevant document found for your query. Please try a different question."
+        updated_state["final_response"] = "No information available about this topic."
     else:
         print(f"---FOUND {len(relevant_documents)} RELEVANT DOCUMENTS---")
 

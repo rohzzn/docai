@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import { JSONTree } from "react-json-tree";
 import axios from "axios";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import {
   Input,
   Button,
@@ -18,7 +21,7 @@ const { Paragraph, Title, Text } = Typography;
 const { Panel } = Collapse;
 
 const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:8000";
+  process.env.REACT_APP_API_BASE_URL || "http://localhost:8010";
 
 function App() {
   const [query, setQuery] = useState("");
@@ -124,7 +127,14 @@ function App() {
           {results["answer"] && (
             <Card style={styles.answerCard}>
               <Title level={4}>Answer</Title>
-              <p>{results["answer"]}</p>
+              <div className="markdown-body">
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeRaw]}
+                >
+                  {results["answer"]}
+                </ReactMarkdown>
+              </div>
               
               {(results["relevant_documents"] || []).length > 0 && (
                 <Button 

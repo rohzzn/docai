@@ -9,7 +9,7 @@ INDEX_NAME = "confluence_embedding"
 KEYWORD_INDEX_NAME = "confluence_keyword"
 
 def get_text_embeddable_columns():
-    return ["id", "text", "title"]
+    return ["id", "text", "title", "space_name", "space_key"]
 
 class SimpleConfluenceClient:
     def __init__(self):

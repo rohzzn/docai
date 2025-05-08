@@ -27,6 +27,7 @@ CONFLUENCE_ACCESS_TOKEN = os.environ.get("CONFLUENCE_ACCESS_TOKEN", "")
 CONFLUENCE_REFRESH_TOKEN = os.environ.get("CONFLUENCE_REFRESH_TOKEN", "")
 CONFLUENCE_CLIENT_ID = os.environ.get("CONFLUENCE_CLIENT_ID", "")
 CONFLUENCE_CLIENT_SECRET = os.environ.get("CONFLUENCE_CLIENT_SECRET", "")
+# This is now used only as a fallback if no spaces are found
 CONFLUENCE_SPACE = os.environ.get("RDCRN_CONFLUENCE_SPACE", "")
 
 # OpenAI API key from environment variables
@@ -154,7 +155,7 @@ def create_indexes(session):
     session.run("""
     CREATE FULLTEXT INDEX confluence_keyword IF NOT EXISTS
     FOR (n:Confluence)
-    ON EACH [n.id, n.text, n.title]
+    ON EACH [n.id, n.text, n.title, n.space_name, n.space_key]
     """)
     
     print("Created Neo4j indexes")
@@ -169,6 +170,8 @@ def create_confluence_node(session, page):
         # Extract relevant data from the page
         page_id = page.get('id')
         title = page.get('title', '')
+        space_name = page.get('space_name', '')
+        space_key = page.get('space_key', '')
         
         # Extract plain text content from HTML
         text = ""
@@ -190,14 +193,16 @@ def create_confluence_node(session, page):
             id: $id,
             title: $title,
             text: $text,
+            space_name: $space_name,
+            space_key: $space_key,
             embedding: $embedding
         })
-        """, id=page_id, title=title, text=text, embedding=embedding)
+        """, id=page_id, title=title, text=text, space_name=space_name, space_key=space_key, embedding=embedding)
         
-        print(f"Created node for page: {title}")
+        print(f"  Created node for page: {title} (Space: {space_name})")
         return True
     except Exception as e:
-        print(f"Error creating node for page {page.get('title', 'Unknown')}: {str(e)}")
+        print(f"  Error creating node for page {page.get('title', 'Unknown')}: {str(e)}")
         return False
 
 def fetch_and_store_confluence_data():
@@ -208,53 +213,46 @@ def fetch_and_store_confluence_data():
     spaces = client.get_spaces()
     print(f"Found {len(spaces.get('results', []))} Confluence spaces")
     
-    # Find the target space
-    target_space = None
-    for space in spaces.get('results', []):
-        if space.get('key') == CONFLUENCE_SPACE:
-            target_space = space
-            break
-    
-    if not target_space:
-        print(f"Warning: Could not find Confluence space with key {CONFLUENCE_SPACE}")
-        # Try to use the first space if available
-        if spaces.get('results', []):
-            target_space = spaces['results'][0]
-            print(f"Using first available space: {target_space.get('name')}")
-        else:
-            print("Error: No Confluence spaces found")
-            return False
-    
-    # Get pages in the space
-    pages_data = client.get_pages(target_space.get('id'))
-    pages = pages_data.get('results', [])
-    print(f"Found {len(pages)} pages in Confluence space {target_space.get('name')}")
-    
-    if not pages:
-        print("No pages found in Confluence")
+    if not spaces.get('results', []):
+        print("Error: No Confluence spaces found")
         return False
-    
+        
     # Initialize Neo4j session
     with driver.session() as session:
         # Clear existing data and create indexes
         clear_existing_data(session)
         create_indexes(session)
         
-        # Process each page
+        total_spaces = len(spaces.get('results', []))
         successful_pages = 0
-        for page in pages:
-            # Get full page content
-            page_data = client.get_page_content(page.get('id'))
-            if page_data:
-                if create_confluence_node(session, page_data):
-                    successful_pages += 1
+        total_pages = 0
         
-        # Verify data was added
-        result = session.run("MATCH (n:Confluence) RETURN count(n) as count")
-        count = result.single()["count"]
-        print(f"Successfully added {count} Confluence pages to Neo4j")
+        # Process all spaces
+        for space_index, space in enumerate(spaces.get('results', []), 1):
+            print(f"Processing space {space_index}/{total_spaces}: {space.get('name')} (ID: {space.get('id')})")
+            
+            # Get pages in the space
+            pages_data = client.get_pages(space.get('id'))
+            pages = pages_data.get('results', [])
+            print(f"  Found {len(pages)} pages in Confluence space {space.get('name')}")
+            total_pages += len(pages)
+            
+            # Process each page in this space
+            for page_index, page in enumerate(pages, 1):
+                print(f"  Processing page {page_index}/{len(pages)}: {page.get('title')}")
+                # Get full page content
+                page_data = client.get_page_content(page.get('id'))
+                if page_data:
+                    # Add space information to the page data
+                    page_data['space_name'] = space.get('name')
+                    page_data['space_key'] = space.get('key')
+                    if create_confluence_node(session, page_data):
+                        successful_pages += 1
         
-        return count > 0
+        print(f"\nSummary: Processed {total_pages} pages from {total_spaces} spaces")
+        print(f"Successfully created {successful_pages} nodes in Neo4j")
+    
+    return successful_pages > 0
 
 def main():
     # Validate required environment variables
