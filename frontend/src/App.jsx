@@ -126,7 +126,6 @@ function App() {
         <div>
           {results["answer"] && (
             <Card style={styles.answerCard}>
-              <Title level={4}>Answer</Title>
               <div className="markdown-body">
                 <ReactMarkdown 
                   remarkPlugins={[remarkGfm]}
