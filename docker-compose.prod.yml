@@ -1,0 +1,66 @@
+services:
+  django:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    networks:
+      - local
+    volumes:
+      - ./webapp:/webapp
+      - ./populate_neo4j.py:/webapp/populate_neo4j.py
+    ports:
+      - "8000:8000"
+      - "11434:11434"
+    env_file:
+      - ./.env
+    environment:
+      - LOAD_DATA=true
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    command: >
+      bash -c "if [ \"$$LOAD_DATA\" = \"true\" ]; then
+                python3 /webapp/populate_neo4j.py;
+              fi &&
+              gunicorn --bind 0.0.0.0:8000 --timeout 120 --workers 4 --worker-class gevent webapp.wsgi:application"
+
+  neo4j:
+    networks:
+      - local
+    image: neo4j:5.23.0
+    ports:
+      - "7474:7474" # HTTP
+      - "7687:7687" # Bolt
+    volumes:
+      - ./neo4j/data:/data
+#      - neo4j_data:/data
+      - neo4j_logs:/logs
+    env_file:
+      - ./.env
+    healthcheck:
+      test: ["CMD", "wget", "-O", "/dev/null", "http://localhost:7474"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  nginx:
+    image: nginx:latest
+    networks:
+      - local
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf
+      - ./frontend/build:/usr/share/nginx/html
+    ports:
+      - "80:80"
+    depends_on:
+      - django
+      - neo4j
+
+networks:
+  local:
+
+volumes:
+  neo4j_data:
+  neo4j_import:
+  neo4j_logs:

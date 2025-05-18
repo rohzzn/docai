@@ -1,0 +1,19 @@
+*.pyc
+.env*
+*.png
+*.mmd
+*.csv
+*.json
+!package.json
+!package-lock.json
+*.iml
+*.xml
+.venv/
+raw_data/
+data_backup/
+nodes_edges_csv/
+neo4j/data/
+
+/node_modules
+# Don't ignore important scripts
+!populate_neo4j.py

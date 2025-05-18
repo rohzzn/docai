@@ -1,0 +1,88 @@
+services:
+  django:
+    build: .
+    networks:
+      - local
+    volumes:
+      - ./webapp:/webapp
+      - ./populate_neo4j.py:/webapp/populate_neo4j.py
+    ports:
+      - "8000:8000"
+      - "11434:11434"
+    env_file:
+      - ./.env
+    environment:
+      - LOAD_DATA=true
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    command: >
+      bash -c "if [ \"$$LOAD_DATA\" = \"true\" ]; then
+                python3 /webapp/populate_neo4j.py;
+              fi &&
+              python3 manage.py runserver 0.0.0.0:8000"
+
+  react:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    networks:
+      - local
+    volumes:
+      - ./frontend:/app
+    command: npm start
+    ports:
+      - "3000:3000"
+    depends_on:
+      - django
+
+  neo4j:
+    networks:
+      - local
+    image: neo4j:5.23.0
+    ports:
+      - "7474:7474" # HTTP
+      - "7687:7687" # Bolt
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    env_file:
+      - ./.env
+    healthcheck:
+      test: ["CMD", "wget", "-O", "/dev/null", "http://localhost:7474"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # postgres:
+  #   image: postgres:15
+  #   networks:
+  #     - local
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   env_file:
+  #     - ./.env.db
+
+#  nginx:
+#    image: nginx:latest
+#    networks:
+#      - local
+#    volumes:
+#      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+#    ports:
+#      - "80:80"
+#    depends_on:
+#      - django
+#      - neo4j
+
+networks:
+  local:
+
+volumes:
+  neo4j_data:
+  neo4j_import:
+  neo4j_logs:
+  # postgres_data:
