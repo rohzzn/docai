@@ -1,4 +1,6 @@
 version: '3.8' # Added version for good practice
+# Remove the 'version: 3.8' line if your docker-compose CLI version is modern and warns about it.
+# It's fine to keep it too.
 
 services:
   django:
@@ -6,20 +8,18 @@ services:
       context: .
       dockerfile: Dockerfile.prod
     networks:
-      - local
+      - docai_internal_network # Use a more specific network name
     volumes:
       - ./webapp:/webapp
       - ./populate_neo4j.py:/webapp/populate_neo4j.py
-    # Django app listens on 8000 INSIDE the docker network.
-    # The 'ports' directive here is mainly for Gunicorn or if you needed direct access.
-    # The internal nginx service will proxy to this.
     ports:
-      - "8000:8000"
+      - "8000:8000" # Django's Gunicorn internal port
       - "11434:11434"
     env_file:
       - ./.env
     environment:
-      - LOAD_DATA=true
+      # LOAD_DATA is already in .env, but can be overridden here if needed
+      - LOAD_DATA=${LOAD_DATA} # Pass through from .env
     depends_on:
       neo4j:
         condition: service_healthy
@@ -29,43 +29,42 @@ services:
               fi &&
               gunicorn --bind 0.0.0.0:8000 --timeout 120 --workers 4 --worker-class gevent webapp.wsgi:application"
 
-  neo4j:
-    networks:
-      - local
+  neo4j: # Neo4j for the 'docai' application
     image: neo4j:5.23.0
+    networks:
+      - docai_internal_network # Use a more specific network name
     ports:
-      - "7474:7474" # Neo4j HTTP
-      - "7687:7687" # Neo4j Bolt
+      - "17474:7474"  # <<< CHANGED: Host port 17474 for this Neo4j HTTP
+      - "17687:7687"  # <<< CHANGED: Host port 17687 for this Neo4j Bolt
     volumes:
-      - ./neo4j/data:/data
-      - neo4j_logs:/logs
+      - ./neo4j/data:/data    # Data for THIS neo4j instance in ./neo4j/data on host
+      - docai_neo4j_logs_vol:/logs # Specific log volume for this Neo4j
     env_file:
-      - ./.env
+      - ./.env # Will use NEO4J_AUTH from this .env for *this* instance
     healthcheck:
-      test: ["CMD", "wget", "-O", "/dev/null", "http://localhost:7474"]
-      interval: 5s
-      timeout: 5s
+      test: ["CMD", "wget", "-O", "/dev/null", "http://localhost:7474"] # Test internal container port
+      interval: 10s
+      timeout: 10s
       retries: 5
       start_period: 30s
 
-  nginx: # This is the Nginx for the docai application
+  nginx: # Nginx for the 'docai' application
     image: nginx:latest
     networks:
-      - local
+      - docai_internal_network # Use a more specific network name
     volumes:
-      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf      # This Nginx's own config
-      - ./frontend/build:/usr/share/nginx/html           # Serves the built React app
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf
+      - ./frontend/build:/usr/share/nginx/html
     ports:
-      - "8081:80"  # <<< KEY CHANGE HERE: Map container's port 80 to host's port 8081
+      - "8081:80" # Exposes this Nginx on host port 8081
     depends_on:
       - django
-      # - neo4j # Nginx doesn't directly depend on Neo4j, Django does.
 
 networks:
-  local:
-    driver: bridge # Explicitly define bridge network
+  docai_internal_network: # Renamed from 'local' for clarity and isolation
+    driver: bridge
 
 volumes:
-  neo4j_data:
-  neo4j_logs:
-  # neo4j_import: # This was in your streamlit_ragpdf, ensure if needed for docai
+  # This volume is for THIS stack's Neo4j logs.
+  # If ./neo4j/data is used as a bind mount, it doesn't need a top-level named volume declaration.
+  docai_neo4j_logs_vol: {}
