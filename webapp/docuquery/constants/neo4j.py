@@ -1,6 +1,6 @@
 URL = "bolt://neo4j:7687"
 USERNAME = "neo4j"
-PASSWORD = "root@neo4j"
+PASSWORD = "password"
 EMBEDDING_NODE_LABEL = "Embeddable"
 EMBEDDING_NODE_PROPERTY = "embedding"
 common_columns = [

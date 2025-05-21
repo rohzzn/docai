@@ -36,7 +36,7 @@ ALLOWED_HOSTS = [
     "172.16.8.101",  # EC2 internal IP
     "doc-ai.rarediseasesnetwork.org",  # Production domain
     "*",  # Allow all hosts temporarily for troubleshooting
-    'doc-ai.rarediseasesnetwork.org', #
+    'doc-ai.rarediseasesnetwork.org',
     'django',                         # Docker service name for internal Nginx
     'localhost',                      # If accessing directly on host for testing
     '127.0.0.1',
@@ -55,22 +55,22 @@ CSRF_TRUSTED_ORIGINS = [
     "https://172.16.8.101",
     "http://doc-ai.rarediseasesnetwork.org",
     "https://doc-ai.rarediseasesnetwork.org",
-    
 ]
 
-# Make CORS more permissive for development
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://0.0.0.0:3000",
-    "http://localhost:8000",
-    "http://doc-ai.rarediseasesnetwork.org",
-    "https://doc-ai.rarediseasesnetwork.org",
-    'django',                         # Docker service name for internal Nginx
-    'localhost',                      # If accessing directly on host for testing
-    '127.0.0.1',
-]
+# CORS Configuration
+# For development, we'll allow all origins
+CORS_ALLOW_ALL_ORIGINS = True
+
+# Only used if CORS_ALLOW_ALL_ORIGINS is False
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:3000",
+#     "http://0.0.0.0:3000",
+#     "http://localhost:8000",
+#     "http://doc-ai.rarediseasesnetwork.org",
+#     "https://doc-ai.rarediseasesnetwork.org",
+# ]
+
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all origins in development mode
 
 # Add CORS_ALLOW_METHODS
 CORS_ALLOW_METHODS = [

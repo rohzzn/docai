@@ -40,7 +40,7 @@ class Neo4jBaseRetriever:
                 text_node_properties=self.text_embeddable_columns,
                 embedding_node_property=EMBEDDING_NODE_PROPERTY,
                 search_type=SearchType.HYBRID,
-                create_embeddings=True,
+                create_embeddings=False,
             )
             
             # Configure the retriever for better results

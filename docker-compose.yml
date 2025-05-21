@@ -17,10 +17,15 @@ services:
       neo4j:
         condition: service_healthy
     command: >
-      bash -c "if [ \"$$LOAD_DATA\" = \"true\" ]; then
-                python3 /webapp/populate_neo4j.py;
-              fi &&
-              python3 manage.py runserver 0.0.0.0:8000"
+      bash -c "
+        echo 'Waiting for Neo4j to be fully ready...' &&
+        sleep 20 &&
+        echo 'Trying to connect to Neo4j...' &&
+        if [ \"$$LOAD_DATA\" = \"true\" ]; then
+          python3 /webapp/populate_neo4j.py || echo 'Warning: Data population failed but continuing startup...';
+        fi &&
+        echo 'Starting Django server...' &&
+        python3 manage.py runserver 0.0.0.0:8000"
 
   react:
     build:
@@ -52,7 +57,7 @@ services:
       test: ["CMD", "wget", "-O", "/dev/null", "http://localhost:7474"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 30s
 
   # postgres:

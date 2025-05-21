@@ -57,6 +57,7 @@ function App() {
     setLoading(true);
 
     try {
+      // Fixed API URL - added back the 'api/' prefix to match the Django URL configuration
       const apiUrl = `${API_BASE_URL}/api/search/?q=${encodeURIComponent(query)}`;
       console.log(`Calling API: ${apiUrl}`);
       

@@ -17,9 +17,9 @@ sys.path.append(str(webapp_dir))
 # Neo4j database credentials from environment variables
 NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://neo4j:7687")
 # Extract username and password from NEO4J_AUTH (format: username/password)
-neo4j_auth = os.environ.get("NEO4J_AUTH", "neo4j/neo4j").split("/")
+neo4j_auth = os.environ.get("NEO4J_AUTH", "neo4j/root@neo4j").split("/")
 NEO4J_USER = neo4j_auth[0]
-NEO4J_PASSWORD = neo4j_auth[1] if len(neo4j_auth) > 1 else "neo4j"
+NEO4J_PASSWORD = neo4j_auth[1] if len(neo4j_auth) > 1 else "password"
 
 # Confluence API credentials from environment variables
 CONFLUENCE_BASE_URL = os.environ.get("CONFLUENCE_BASE_URL", "")
@@ -29,6 +29,8 @@ CONFLUENCE_CLIENT_ID = os.environ.get("CONFLUENCE_CLIENT_ID", "")
 CONFLUENCE_CLIENT_SECRET = os.environ.get("CONFLUENCE_CLIENT_SECRET", "")
 # This is now used only as a fallback if no spaces are found
 CONFLUENCE_SPACE = os.environ.get("RDCRN_CONFLUENCE_SPACE", "")
+# Specific Confluence space to target (set to empty to load ALL spaces)
+TARGET_SPACE_KEY = os.environ.get("TARGET_SPACE_KEY", "")
 
 # OpenAI API key from environment variables
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -44,8 +46,16 @@ class ConfluenceClient:
         self.client_id = CONFLUENCE_CLIENT_ID
         self.client_secret = CONFLUENCE_CLIENT_SECRET
         
-        if not all([self.base_url, self.access_token, self.client_id]):
-            print("WARNING: Confluence API credentials not fully configured in environment variables")
+        missing_credentials = []
+        if not self.base_url:
+            missing_credentials.append("CONFLUENCE_BASE_URL")
+        if not self.access_token:
+            missing_credentials.append("CONFLUENCE_ACCESS_TOKEN")
+        
+        if missing_credentials:
+            print(f"WARNING: The following required Confluence credentials are missing: {', '.join(missing_credentials)}")
+        
+        print(f"Initializing Confluence client with base URL: {self.base_url}")
         
         self.headers = {
             'Authorization': f'Bearer {self.access_token}',
@@ -58,14 +68,45 @@ class ConfluenceClient:
         if not self.base_url or not self.access_token:
             print("ERROR: Confluence API credentials not configured")
             return {"results": []}
+        
+        print(f"Fetching all Confluence spaces from {self.base_url}/api/v2/spaces")
             
         url = f"{self.base_url}/api/v2/spaces"
+        params = {"limit": 100}  # Maximum allowed per request
+        all_spaces = []
+        
         try:
-            response = requests.get(url, headers=self.headers)
-            response.raise_for_status()
-            return response.json()
+            # Implement pagination to get ALL spaces
+            while url:
+                print(f"Fetching spaces from {url}...")
+                response = requests.get(url, headers=self.headers, params=params)
+                response.raise_for_status()
+                data = response.json()
+                
+                # Add results to our collection
+                all_spaces.extend(data.get('results', []))
+                
+                # Check if there are more spaces
+                if 'next' in data.get('_links', {}):
+                    # For next request, we follow the next link but need to fix the URL
+                    next_link = data['_links']['next']
+                    # Make sure we don't double the base URL
+                    if next_link.startswith('/'):
+                        url = self.base_url + next_link
+                    else:
+                        url = next_link
+                    params = {}  # Next URL already includes parameters
+                else:
+                    # No more spaces
+                    break
+                    
+            return {"results": all_spaces}
+        except requests.exceptions.ConnectionError as e:
+            print(f"ERROR: Connection error when accessing Confluence API: {str(e)}")
+            print("Please check if the Confluence URL is correct and accessible from the container.")
+            return {"results": []}
         except Exception as e:
-            print(f"Error getting Confluence spaces: {str(e)}")
+            print(f"ERROR getting Confluence spaces: {str(e)}")
             return {"results": []}
     
     def get_pages(self, space_id):
@@ -75,13 +116,65 @@ class ConfluenceClient:
             return {"results": []}
             
         url = f"{self.base_url}/api/v2/pages"
-        params = {'spaceId': space_id}
+        params = {'spaceId': space_id, 'limit': 100}  # Use maximum allowed per request
+        all_pages = []
+        
         try:
-            response = requests.get(url, headers=self.headers, params=params)
-            response.raise_for_status()
-            return response.json()
+            # Implement pagination to get ALL pages
+            page_count = 1
+            while url:
+                print(f"  Fetching pages page {page_count} from {url}...")
+                # Fix any URL issues
+                if "wiki/wiki" in url:
+                    url = url.replace("wiki/wiki", "wiki")
+                
+                response = requests.get(url, headers=self.headers, params=params)
+                response.raise_for_status()
+                data = response.json()
+                
+                # Add results to our collection
+                new_results = data.get('results', [])
+                print(f"  Found {len(new_results)} pages in this batch")
+                all_pages.extend(new_results)
+                
+                # Check for 'next' URL in Link header which is more reliable
+                if 'Link' in response.headers:
+                    link_header = response.headers['Link']
+                    if 'rel="next"' in link_header:
+                        # Extract next URL from Link header
+                        import re
+                        next_match = re.search('<([^>]*)>; rel="next"', link_header)
+                        if next_match:
+                            next_url = next_match.group(1)
+                            # Confluence sometimes returns relative URLs
+                            if next_url.startswith('/'):
+                                url = self.base_url + next_url.replace('/wiki/', '/')
+                            else:
+                                url = next_url
+                            # No longer need the params
+                            params = {}
+                            page_count += 1
+                            continue
+                
+                # Fallback to JSON _links if Link header not found
+                if 'next' in data.get('_links', {}):
+                    next_link = data['_links']['next']
+                    # Handle relative URLs
+                    if next_link.startswith('/'):
+                        url = self.base_url + next_link.replace('/wiki/', '/')
+                    else:
+                        url = next_link
+                    params = {}  # Next URL already includes parameters
+                    page_count += 1
+                else:
+                    # No more pages
+                    break
+                    
+            print(f"  Retrieved a total of {len(all_pages)} pages across {page_count} API calls")
+            return {"results": all_pages}
         except Exception as e:
             print(f"Error getting Confluence pages: {str(e)}")
+            print(f"URL that caused error: {url}")
             return {"results": []}
     
     def get_page_content(self, page_id):
@@ -90,28 +183,85 @@ class ConfluenceClient:
             print("ERROR: Confluence API credentials not configured")
             return None
             
+        url = f"{self.base_url}/api/v2/pages/{page_id}"
+        params = {'body-format': 'storage'}
+        
         try:
-            # First get the page metadata using v2 API
-            url = f"{self.base_url}/api/v2/pages/{page_id}"
-            response = requests.get(url, headers=self.headers)
+            response = requests.get(url, headers=self.headers, params=params)
             response.raise_for_status()
-            
-            # Then get the page content using v1 API
-            content_url = f"{self.base_url}/rest/api/content/{page_id}"
-            params = {'expand': 'body.storage,space,version'}
-            content_response = requests.get(content_url, headers=self.headers, params=params)
-            content_response.raise_for_status()
-            
-            # Combine the metadata with the content
-            page_data = {
-                **response.json(),
-                'content': content_response.json()
-            }
-            
-            return page_data
+            return response.json()
         except Exception as e:
             print(f"Error getting Confluence page content: {str(e)}")
             return None
+
+    def get_child_pages(self, parent_id):
+        """Get all child pages of a specific Confluence page"""
+        if not self.base_url or not self.access_token:
+            print("ERROR: Confluence API credentials not configured")
+            return {"results": []}
+            
+        url = f"{self.base_url}/api/v2/pages/{parent_id}/children"
+        params = {'limit': 100}  # Use maximum allowed per request
+        all_children = []
+        
+        try:
+            # Implement pagination to get ALL child pages
+            page_count = 1
+            while url:
+                print(f"    Fetching child pages page {page_count} from {url}...")
+                # Fix any URL issues
+                if "wiki/wiki" in url:
+                    url = url.replace("wiki/wiki", "wiki")
+                    
+                response = requests.get(url, headers=self.headers, params=params)
+                response.raise_for_status()
+                data = response.json()
+                
+                # Add results to our collection
+                new_results = data.get('results', [])
+                print(f"    Found {len(new_results)} child pages in this batch")
+                all_children.extend(new_results)
+                
+                # Check for 'next' URL in Link header which is more reliable
+                if 'Link' in response.headers:
+                    link_header = response.headers['Link']
+                    if 'rel="next"' in link_header:
+                        # Extract next URL from Link header
+                        import re
+                        next_match = re.search('<([^>]*)>; rel="next"', link_header)
+                        if next_match:
+                            next_url = next_match.group(1)
+                            # Confluence sometimes returns relative URLs
+                            if next_url.startswith('/'):
+                                url = self.base_url + next_url.replace('/wiki/', '/')
+                            else:
+                                url = next_url
+                            # No longer need the params
+                            params = {}
+                            page_count += 1
+                            continue
+                
+                # Fallback to JSON _links if Link header not found
+                if 'next' in data.get('_links', {}):
+                    next_link = data['_links']['next']
+                    # Handle relative URLs
+                    if next_link.startswith('/'):
+                        url = self.base_url + next_link.replace('/wiki/', '/')
+                    else:
+                        url = next_link
+                    params = {}  # Next URL already includes parameters
+                    page_count += 1
+                else:
+                    # No more pages
+                    break
+                    
+            if page_count > 1:
+                print(f"    Retrieved a total of {len(all_children)} child pages across {page_count} API calls")
+            return {"results": all_children}
+        except Exception as e:
+            print(f"Error getting Confluence child pages: {str(e)}")
+            print(f"URL that caused error: {url}")
+            return {"results": []}
 
 # Function to get embeddings from OpenAI
 def get_embedding(text):
@@ -175,12 +325,16 @@ def create_confluence_node(session, page):
         
         # Extract plain text content from HTML
         text = ""
-        if 'content' in page and 'body' in page['content'] and 'storage' in page['content']['body']:
-            html_content = page['content']['body']['storage']['value']
-            
-            # Use BeautifulSoup for better HTML parsing
+        
+        # Check if body content is in the v2 API format
+        if 'body' in page and 'storage' in page.get('body', {}):
+            html_content = page['body']['storage'].get('value', '')
             soup = BeautifulSoup(html_content, 'html.parser')
-            # Get text and decode HTML entities
+            text = html.unescape(soup.get_text(separator=' ', strip=True))
+        # Check for the v1 API format
+        elif 'content' in page and 'body' in page.get('content', {}) and 'storage' in page.get('content', {}).get('body', {}):
+            html_content = page['content']['body']['storage'].get('value', '')
+            soup = BeautifulSoup(html_content, 'html.parser')
             text = html.unescape(soup.get_text(separator=' ', strip=True))
         
         # Generate embedding for the document text
@@ -213,9 +367,27 @@ def fetch_and_store_confluence_data():
     spaces = client.get_spaces()
     print(f"Found {len(spaces.get('results', []))} Confluence spaces")
     
+    # Filter for target space if specified
+    if TARGET_SPACE_KEY:
+        print(f"Filtering for target space key: {TARGET_SPACE_KEY}")
+        filtered_spaces = [space for space in spaces.get('results', []) if space.get('key') == TARGET_SPACE_KEY]
+        if filtered_spaces:
+            spaces['results'] = filtered_spaces
+            print(f"Found target space: {filtered_spaces[0].get('name')} (ID: {filtered_spaces[0].get('id')})")
+        else:
+            print(f"WARNING: Target space '{TARGET_SPACE_KEY}' not found among available spaces")
+    else:
+        print("Loading ALL available Confluence spaces")
+    
     if not spaces.get('results', []):
         print("Error: No Confluence spaces found")
         return False
+        
+    # Print available spaces
+    print("\nAvailable spaces:")
+    for i, space in enumerate(spaces.get('results', []), 1):
+        print(f"  {i}. {space.get('name')} (Key: {space.get('key')}, ID: {space.get('id')})")
+    print("")
         
     # Initialize Neo4j session
     with driver.session() as session:
@@ -226,28 +398,61 @@ def fetch_and_store_confluence_data():
         total_spaces = len(spaces.get('results', []))
         successful_pages = 0
         total_pages = 0
+        processed_page_ids = set()  # Keep track of processed pages to avoid duplicates
         
         # Process all spaces
         for space_index, space in enumerate(spaces.get('results', []), 1):
-            print(f"Processing space {space_index}/{total_spaces}: {space.get('name')} (ID: {space.get('id')})")
+            try:
+                print(f"\nProcessing space {space_index}/{total_spaces}: {space.get('name')} (ID: {space.get('id')})")
+                
+                # Get pages in the space
+                pages_data = client.get_pages(space.get('id'))
+                pages = pages_data.get('results', [])
+                print(f"  Found {len(pages)} top-level pages in Confluence space {space.get('name')}")
+                
+                if not pages:
+                    print(f"  WARNING: No pages found in space {space.get('name')} (Key: {space.get('key')})")
+                    continue
+                
+                # Create a queue to process all pages including children
+                pages_to_process = list(pages)  # Start with top-level pages
+                
+                # Process all pages in the queue
+                page_index = 0
+                while page_index < len(pages_to_process):
+                    page = pages_to_process[page_index]
+                    page_index += 1
+                    
+                    if page.get('id') in processed_page_ids:
+                        print(f"  Skipping already processed page: {page.get('title')}")
+                        continue
+                    
+                    total_pages += 1
+                    print(f"  Processing page {page_index}/{len(pages_to_process)} ({total_pages} total): {page.get('title')} (ID: {page.get('id')})")
+                    
+                    try:
+                        # Get full page content
+                        page_data = client.get_page_content(page.get('id'))
+                        if page_data:
+                            # Add space information to the page data
+                            page_data['space_name'] = space.get('name')
+                            page_data['space_key'] = space.get('key')
+                            if create_confluence_node(session, page_data):
+                                successful_pages += 1
+                                processed_page_ids.add(page.get('id'))
+                        
+                        # Check for child pages
+                        child_pages_data = client.get_child_pages(page.get('id'))
+                        child_pages = child_pages_data.get('results', [])
+                        if child_pages:
+                            print(f"    Found {len(child_pages)} child pages for {page.get('title')}")
+                            # Add these pages to our processing queue
+                            pages_to_process.extend(child_pages)
+                    except Exception as e:
+                        print(f"  ERROR processing page {page.get('title', 'Unknown')}: {str(e)}")
             
-            # Get pages in the space
-            pages_data = client.get_pages(space.get('id'))
-            pages = pages_data.get('results', [])
-            print(f"  Found {len(pages)} pages in Confluence space {space.get('name')}")
-            total_pages += len(pages)
-            
-            # Process each page in this space
-            for page_index, page in enumerate(pages, 1):
-                print(f"  Processing page {page_index}/{len(pages)}: {page.get('title')}")
-                # Get full page content
-                page_data = client.get_page_content(page.get('id'))
-                if page_data:
-                    # Add space information to the page data
-                    page_data['space_name'] = space.get('name')
-                    page_data['space_key'] = space.get('key')
-                    if create_confluence_node(session, page_data):
-                        successful_pages += 1
+            except Exception as e:
+                print(f"ERROR processing space {space.get('name', 'Unknown')}: {str(e)}")
         
         print(f"\nSummary: Processed {total_pages} pages from {total_spaces} spaces")
         print(f"Successfully created {successful_pages} nodes in Neo4j")

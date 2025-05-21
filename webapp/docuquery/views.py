@@ -15,6 +15,13 @@ def index(request):
     return HttpResponse("Hello, world!")
 
 @require_http_methods(["GET"])
+def health(request):
+    """
+    Simple health check endpoint that always returns 200 OK
+    """
+    return JsonResponse({"status": "healthy", "message": "Django server is running"})
+
+@require_http_methods(["GET"])
 def api_status(request):
     """
     Diagnostic endpoint to check API connectivity and server information

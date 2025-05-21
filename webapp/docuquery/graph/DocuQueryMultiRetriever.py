@@ -333,33 +333,38 @@ def retrieve_documents(state):
         state (dict): New key added to state, documents, that contains retrieved documents
     """
 
-    neo4j_pr = Neo4jPostgresRetriever()
-    postgres_document_retriever = neo4j_pr.get_document_retriever()
-
-    neo4j_cr = Neo4jConfluenceRetriever()
-    confluence_document_retriever = neo4j_cr.get_document_retriever()
-
     print("---NEO4J RETRIEVE---")
     query = state.get("user_query")
 
-    parallel_retriever = RunnableParallel(
-        postgres=postgres_document_retriever,
-        confluence=confluence_document_retriever
-    )
-
-    results = parallel_retriever.invoke(query)
-
-    for doc in results['postgres']:
-        # Add data_source to metadata instead of page_content
-        doc.metadata['data_source'] = 'postgres'
-
-    for doc in results['confluence']:
-        # Add data_source to metadata instead of page_content
-        doc.metadata['data_source'] = 'confluence'
-
-    retrieved_documents = results['postgres'] + results['confluence']
-
-    return {"retrieved_documents": retrieved_documents}
+    try:
+        # Try to connect to Neo4j and retrieve documents
+        neo4j_cr = Neo4jConfluenceRetriever()
+        confluence_document_retriever = neo4j_cr.get_document_retriever()
+        
+        # Use only the confluence retriever
+        results = {'confluence': confluence_document_retriever.invoke(query), 'postgres': []}
+        
+        # No Postgres documents to process
+        
+        for doc in results['confluence']:
+            # Add data_source to metadata instead of page_content
+            doc.metadata['data_source'] = 'confluence'
+    
+        retrieved_documents = results['confluence']
+        
+        return {"retrieved_documents": retrieved_documents}
+    
+    except Exception as e:
+        # Log the error for debugging
+        import logging
+        logging.error(f"Error retrieving documents from Neo4j: {str(e)}")
+        print(f"ERROR: Failed to retrieve documents: {str(e)}")
+        
+        # Return an empty result with error message
+        return {
+            "retrieved_documents": [], 
+            "final_response": "Sorry, I'm having trouble connecting to the document database. Please check the Neo4j connection."
+        }
 
 class DocuQuery:
     def __init__(self):
