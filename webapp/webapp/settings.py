@@ -60,10 +60,17 @@ CSRF_TRUSTED_ORIGINS = [
 
 # Make CORS more permissive for development
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://0.0.0.0:3000",
+    "http://localhost:8000",
     "http://doc-ai.rarediseasesnetwork.org",
     "https://doc-ai.rarediseasesnetwork.org",
+    'django',                         # Docker service name for internal Nginx
+    'localhost',                      # If accessing directly on host for testing
+    '127.0.0.1',
 ]
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all origins in development mode
 
 # Add CORS_ALLOW_METHODS
 CORS_ALLOW_METHODS = [
